@@ -74,9 +74,9 @@
 	)
 )
 
-;; Helper function to generate a random number in the range [1,20]
-(defun random-node ()
-	(1+ (random 20))
+;; Helper function to return a random node in the cave 
+(defun random-node (cave)
+	(1+ (random (length cave)))
 )
 
 ;; Playing around with lisp's OO programming. 
@@ -109,9 +109,9 @@
 )
 
 ;; The action the wumpus takes when you shoot an arrow or bump into him.
-(defmethod hazard-action ((h wumpus))
+(defmethod hazard-moveReaction ((h wumpus) cave)
 	(let ((wumpus-loc (hazard-location (car *hazards*))))
-		(setf wumpus-loc (nth (random 4) (assoc wumpus-loc *caves*)))
+		(setf wumpus-loc (random-list-elem (assoc wumpus-loc cave))) 
 
 		(when (equal wumpus-loc (player-location *player*))
 			(fresh-line)
@@ -122,14 +122,14 @@
 	)
 )
 
-;; The action a bat takes when you run into them.
-(defmethod hazard-action ((h bats))
-	(setf (player-location *player*) (random-node))
+;; The action a bat takes after you move
+(defmethod hazard-moveReaction ((h bats) cave)
+	(setf (player-location *player*) (random-node cave))
 	(handle-new-location)
 ) 
 
-;; The action the pit takes when you run into it.
-(defmethod hazard-action ((h pit))
+;; The action the pit takes after you move
+(defmethod hazard-moveReaction ((h pit) cave)
 	(setf (player-living *player*) nil)
 )
 
@@ -139,7 +139,7 @@
 		(setf *hazards* hazards)
 		(let ((taken-spots (list (player-location *player*))))
 			(labels ((find-empty-loc ()
-					(let ((loc (random-node)))
+					(let ((loc (random-node *caves*)))
 						(if (member loc taken-spots)
 							(find-empty-loc) 
 							(progn
@@ -179,9 +179,12 @@
 
 ;; Utility function that returns the list of tunnels adjacent
 ;; to the player
-(defun adjacent-tunnels ()
-	(cdr (assoc (player-location *player*) *caves*))
-)
+(defun adjacent-tunnels (location cave)
+	(cdr (assoc location  cave)))
+
+;; Utility function that returns a random element in a list
+(defun random-list-elem (lst)
+	(nth (random (length lst)) lst))
 
 ;; Returns true/false if the player is/is not alive.
 (defun player-alive ()
@@ -195,7 +198,7 @@
 (defun init-player (player)
 	(if player
 		(setf *player* player)
-		(setf *player* (make-player :location (random-node) :arrows 3 :living T))
+		(setf *player* (make-player :location (random-node *caves*) :arrows 3 :living T))
 	)
 	(copy-structure *player*)
 )
@@ -203,7 +206,7 @@
 ;; Handles player shooting
 (defun player-shoot ()
 	(format t "~&SHOOT WHERE? ")
-	(let ((shoot-loc (read)) (adj-tunnels (adjacent-tunnels))) 
+	(let ((shoot-loc (read)) (adj-tunnels (adjacent-tunnels (player-location *player*) *caves*))) 
 		(if 
 			(and 
 				(integerp shoot-loc) 
@@ -215,7 +218,7 @@
 					(hazard-reaction haz)
 				)
 				(when (wumpus-alive) 
-					(hazard-action (car *hazards*)) 
+					(hazard-moveReaction (car *hazards*) *caves*) 
 					(decf (player-arrows *player*))
 				)
 				(when miss-msg (princ "MISSED"))
@@ -233,7 +236,7 @@
 		(if 
 			(and 
 				(integerp new-loc) 
-				(member new-loc (adjacent-tunnels)) 
+				(member new-loc (adjacent-tunnels (player-location *player*) *caves*)) 
 			)	
 			(progn
 				(setf (player-location *player*) new-loc)
@@ -256,7 +259,7 @@
 						(bats (princ "SUPER BATS CARRY YOU! ELSEWHERESVILLE FOR YOU!!!")) 
 						(pit (princ "YYYIIIIIEEEEE... YOU FELL INTO A PIT AND DIED"))
 					)
-					(hazard-action h)
+					(hazard-moveReaction h *caves*)
 				)
 			)
 			*hazards*
@@ -267,7 +270,7 @@
 ;; Prints information about your current status.
 (defun print-location-info () 
 	(format t "~&~%YOU ARE IN ROOM: ~a" (player-location *player*))
-	(let ((adj-tunnels (adjacent-tunnels)))
+	(let ((adj-tunnels (adjacent-tunnels (player-location *player*) *caves*)))
 		(mapc
 			(lambda (h)
 				(fresh-line)
