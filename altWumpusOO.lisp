@@ -93,45 +93,48 @@
 (defstruct (pit (:include hazard)))
 
 ;; How the wumpus reacts to getting shot
-(defmethod hazard-reaction ((h wumpus))
-	(princ "YOU KILLED THE WUMPUS!")
-	(setf (wumpus-living (car *hazards*)) nil)
-)
+(defmethod hazard-shootReaction ((h wumpus) shoot-loc)
+	(cond
+		((equal shoot-loc (hazard-location h))
+			(princ "YOU KILLED THE WUMPUS!")
+			(setf (wumpus-living (car *hazards*)) nil))
+		(T (setf (hazard-location h) 
+			(random-list-elem (assoc (hazard-location h) *caves*))))))
 
 ;; How the bats react to getting shot
-(defmethod hazard-reaction ((h bats))
-	(princ "YOU HEAR BATS SCREECHING ANGRILY")
-)
+(defmethod hazard-shootReaction ((h bats) shoot-loc)
+	(when (equal (hazard-location h) shoot-loc)
+		(princ "YOU HEAR BATS SCREECHING ANGRILY")))
 
 ;; How the bottomless pit reacts to getting shot
-(defmethod hazard-reaction ((h pit))
-	(princ "YOU HEAR YOUR ARROW GO WHISTLING DOWN A HOLE")
-)
+(defmethod hazard-shootReaction ((h pit) shoot-loc)
+	(when (equal (hazard-location h) (shoot-loc))
+		(princ "YOU HEAR YOUR ARROW GO WHISTLING DOWN A HOLE")))
 
 ;; The action the wumpus takes when you shoot an arrow or bump into him.
 (defmethod hazard-moveReaction ((h wumpus) cave)
-	(let ((wumpus-loc (hazard-location (car *hazards*))))
-		(setf wumpus-loc (random-list-elem (assoc wumpus-loc cave))) 
-
+	(let ((wumpus-loc (hazard-location h)))
 		(when (equal wumpus-loc (player-location *player*))
-			(fresh-line)
-			(princ "TSK TSK TSK - WUMPUS GOT YOU!")
-			(setf (player-living *player*) nil)
-		)
-		(setf (hazard-location (car *hazards*)) wumpus-loc)
-	)
-)
+			(princ "OOPS... YOU BUMPED A WUMPUS")
+			(setf (hazard-location h) (random-list-elem (assoc wumpus-loc cave)))
+
+			(when (equal (hazard-location h) (player-location *player*))
+				(fresh-line)
+				(princ "TSK TSK TSK - WUMPUS GOT YOU!")
+				(setf (player-living *player*) nil)))))
 
 ;; The action a bat takes after you move
 (defmethod hazard-moveReaction ((h bats) cave)
-	(setf (player-location *player*) (random-node cave))
-	(handle-new-location)
-) 
+	(when (equal (hazard-location h) (player-location *player*))
+		(princ "SUPER BATS CARRY YOU! ELSEWHERESVILLE FOR YOU!!!") 
+		(setf (player-location *player*) (random-node cave))
+		(handle-new-location)))
 
 ;; The action the pit takes after you move
 (defmethod hazard-moveReaction ((h pit) cave)
-	(setf (player-living *player*) nil)
-)
+	(when (equal (hazard-location h) (player-location *player*))
+		(princ "YYYIIIIIEEEEE... YOU FELL INTO A PIT AND DIED")
+		(setf (player-living *player*) nil)))
 
 ;; Creates the hazards and their locations
 (defun init-hazards (hazards)
@@ -212,16 +215,11 @@
 				(integerp shoot-loc) 
 				(member shoot-loc adj-tunnels)
 			)
-			(let ((miss-msg t) (haz (find shoot-loc *hazards* :key (lambda (h) (hazard-location h)))))
-				(when haz
-					(setf miss-msg nil)
-					(hazard-reaction haz)
-				)
-				(when (wumpus-alive) 
-					(hazard-moveReaction (car *hazards*) *caves*) 
-					(decf (player-arrows *player*))
-				)
-				(when miss-msg (princ "MISSED"))
+			(let ((haz (find shoot-loc *hazards* :key (lambda (h) (hazard-location h)))))
+				(decf (player-arrows *player*))
+				(if haz
+					(hazard-shootReaction haz shoot-loc)
+					(princ "MISSED"))
 			)
 			(player-shoot)
 		)
@@ -252,13 +250,8 @@
 	(let ((player-loc (player-location *player*)))
 		(mapc
 			(lambda (h)
-				(when (and (player-alive) (equal player-loc (hazard-location h)))
+				(when (player-alive)
 					(fresh-line)
-					(case (type-of h)
-						(wumpus (princ "OOPS... YOU BUMPED A WUMPUS"))
-						(bats (princ "SUPER BATS CARRY YOU! ELSEWHERESVILLE FOR YOU!!!")) 
-						(pit (princ "YYYIIIIIEEEEE... YOU FELL INTO A PIT AND DIED"))
-					)
 					(hazard-moveReaction h *caves*)
 				)
 			)
