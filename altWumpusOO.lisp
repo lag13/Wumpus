@@ -1,4 +1,10 @@
 ;;The (almost) classic game of Hunt the Wumpus.
+;; TODO: Convert some of the looping functions to use the loop
+;; macro instead of recursion. Play with the shoot handling
+;; function. I want to have each of the hazards "react" but
+;; I also want the arrow to stop when it hits something...
+;; Or maybe I don't stop the arrow when it hits something...
+;; http://letoverlambda.com/textmode.cl/guest/chap2.html
 
 ;; Global variables representing the player and hazards
 (defparameter *player* nil)
@@ -61,23 +67,60 @@
 
 ;; The main loop for the entire game
 (defun main-game-loop ()
-	(fresh-line)
-	(when (and (player-alive) (wumpus-alive))
-		(print-location-info)
-		(fresh-line)
+	(loop while (and (player-alive) (wumpus-alive))
+		do
+			(print-location-info)
+			(fresh-line)
+			(handle-player-input)))
+
+#|
+			(princ "SHOOT OR MOVE? ")
+			(case (read)
+				(s (player-shoot))
+				(m (player-move)))))
+|#
+
+;; List of cons pairs containing commands and the functions that
+;; those commands execute??? Sounds kinda cool to me.
+(defun handle-player-input ()
+	(loop do
 		(princ "SHOOT OR MOVE? ")
 		(case (read)
-			(s (player-shoot))
-			(m (player-move))
-		)
-		(main-game-loop)
-	)
-)
+			(s (player-shoot) (return))
+			(m (player-move) (return)))))
 
 ;; Helper function to return a random node in the cave 
 (defun random-node (cave)
 	(1+ (random (length cave)))
 )
+
+;; Returns a list of n random unique integers in the range [0, max)
+;; Note that n <= max for this to work
+(defun nRandUnique (n max) 
+	(loop 
+		with lst = (loop for i from 0 below max collect i)
+		with lowerBound = (- max n)
+		for i from (1- max) downto lowerBound
+		do
+			(rotatef (nth i lst) (nth (random (1+ i)) lst))
+		collect
+			(nth i lst)))
+
+;; Something I made for fun.
+;; When you call it with a number it will create an array of
+;; values [0, m) and return and random number in that range. 
+;; Then when you call the function without any
+;; parameters it will return random unique numbers in the range
+;; [0, m) of course repeating when you call it more than m times.
+(let ((max 0) (arr nil))
+	(defun randUnique (&optional m)
+		(when (equal max -1) (setf max (1- (array-total-size arr))))
+		(when m
+			(setf arr (make-array m :initial-contents 
+				(loop for i from 0 below m collect i)))
+			(setf max (1- m)))
+		(rotatef (aref arr max) (aref arr (random (1+ max))))
+		(aref arr (1+ (decf max)))))
 
 ;; Playing around with lisp's OO programming. 
 ;; In particular all the hazards in the game (wumpus, pit, bats)
@@ -108,7 +151,7 @@
 
 ;; How the bottomless pit reacts to getting shot
 (defmethod hazard-shootReaction ((h pit) shoot-loc)
-	(when (equal (hazard-location h) (shoot-loc))
+	(when (equal (hazard-location h) shoot-loc)
 		(princ "YOU HEAR YOUR ARROW GO WHISTLING DOWN A HOLE")))
 
 ;; The action the wumpus takes when you shoot an arrow or bump into him.
@@ -117,7 +160,6 @@
 		(when (equal wumpus-loc (player-location *player*))
 			(princ "OOPS... YOU BUMPED A WUMPUS")
 			(setf (hazard-location h) (random-list-elem (assoc wumpus-loc cave)))
-
 			(when (equal (hazard-location h) (player-location *player*))
 				(fresh-line)
 				(princ "TSK TSK TSK - WUMPUS GOT YOU!")
