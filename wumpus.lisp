@@ -6,6 +6,9 @@
 (defparameter *command-list* 
   '((m . (player-move . 0))
     (s . (player-shoot . 0))))
+
+;; Defines how "crooked" an arrow can be
+(defparameter *crookedness* 0)
 		  
 ;; Global variables representing the player and hazards
 (defparameter *player* nil)
@@ -127,6 +130,16 @@
 (defun adjacent-tunnels (location) 
   (cdr (assoc location *cave*)))
 
+;; Breaks up a string into a list of tokens based on 
+;; the delimiter character.
+(defun explode (delimiter str)
+  (loop with token
+	for i = 0 then (1+ j)
+	for j = (position delimiter str :start i)
+	when (> (length (setf token (subseq str i j))) 0)
+	collect token
+	while j))
+
 ;; Utility function that returns a random element in a list
 (defun random-list-elem (lst)
   (nth (random (length lst)) lst))
@@ -148,7 +161,7 @@
 (defstruct (pit (:include hazard)))
 
 ;; Handles player shooting
-(defun player-shoot ()
+#|(defun player-shoot ()
   (let ((shoot-loc nil)
 	(adj-tunnels (adjacent-tunnels (player-location *player*))))
     (loop until (and (integerp shoot-loc) (member shoot-loc adj-tunnels))
@@ -160,13 +173,64 @@
       (princ "MISSED")))
   (decf (player-arrows *player*)))
 
+	(shoot-locs (with-input-from-string 
+		     (string-stream (read-line))
+		     (loop for i from 0 to *crookedness*
+			   for x = (read string-stream nil nil)
+			   while x
+			   collect x))))
+|#
+(defun player-shoot ()
+  (format t "~&SHOOT WHERE? ")
+  (let ((err nil) (hit-something-p nil) (dist-travelled 0)
+	(curr-arrow-loc (player-location *player*))
+	(shoot-locs (loop with input = (explode #\Space (read-line))
+			  for i from 0 to *crookedness*
+			  for x in input
+			  collect (parse-integer x :junk-allowed t))))
+    (loop with prev = nil
+	  for s in shoot-locs
+	  unless err
+	  do
+	  (if (and (integerp s) 
+		   (not (equal prev s))
+		   (member s (adjacent-tunnels curr-arrow-loc)))
+	      (progn
+		(unless hit-something-p 
+		  (setf hit-something-p 
+			(find s *hazards* :key (lambda (h) (hazard-location h)))))
+		(hazards-react #'hazard-shoot-reaction s)
+		(setf prev curr-arrow-loc)
+		(setf curr-arrow-loc s)
+		(incf dist-travelled))
+	    (setf err T)))
+    (when err
+      (princ "THE ARROW IS GOING WILD!")
+      (loop for i from dist-travelled below *crookedness*
+	    do
+	    (setf curr-arrow-loc (random-list-elem (assoc curr-arrow-loc *cave*)))
+	    (if (equal curr-arrow-loc (player-location *player*))
+		(progn
+		  (setf (player-health *player*) 0)
+		  (princ "YOU SHOT YOURSELF AND DIED...")
+		  (setf hit-something-p T))
+	      (progn
+		(unless hit-something-p 
+		  (setf hit-something-p 
+			(find curr-arrow-loc *hazards* :key (lambda (h) (hazard-location h)))))
+		(hazards-react #'hazard-shoot-reaction curr-arrow-loc)))))
+    (unless hit-something-p
+      (princ "MISSED")))
+  (decf (player-arrows *player*)))
+	  
+
 ;; The action the wumpus takes when you shoot
 (defmethod hazard-shoot-reaction ((h wumpus) shoot-loc)
   (if (equal shoot-loc (hazard-location h))
       (progn 
 	(princ "YOU KILLED THE WUMPUS!")
 	(setf (wumpus-health h) 0))
-    (setf (hazard-location h) 
+    (setf (hazard-location h)
 	    (random-list-elem (assoc (hazard-location h) *cave*)))))
 
 ;; The action the bats takes when you shoot
