@@ -1,30 +1,31 @@
 ;;; A text game engine
-(defstruct command sym func num-params desc)
+(defstruct command sym func num-params description)
 
 (defparameter *command-list* nil
   "List of possible commands that the player can execute.")
 
+;; We must know how many parameters a user created command/function
+;; accepts so that the main loop can read in the appropriate number
+;; of arguments. To prevent the user from having to manually enter 
+;; the number I created this macro which defines a function and
+;; adds it to the command list.
+;; I'm not entirely sure if it is a good use of a macro. Is it a good
+;; idea to define a function inside of a macro? Is it a good idea to
+;; change global state inside of a macro? Does the function still get 
+;; defined if this is called within another function?
 (defmacro add-command (command-sym command-desc command-func arg-list &body body)
   "Adds a command that a player could execute in a game."
   (push (make-command :sym command-sym
 		      :func command-func
 		      :num-params (length arg-list)
-		      :desc command-desc)
+		      :description command-desc)
 	*command-list*)
   `(defun ,command-func ,arg-list ,@body))
 
-;; All text games will have this command.
-(add-command ? "Displays the list of possible commands and what they do." 
-	     display-commands ()
-	     (format t "~%")
-	     (loop for c in *command-list*
-		   do
-		   (format t "~a - ~a~%" (command-sym c) (command-desc c))))
-
-(defun main-game-loop (won-gamep lost-gamep print-prompt print-game-view &optional (extra-bookkeeping (lambda () )))
+(defun main-game-loop (game-continuesp print-prompt print-game-view &optional (extra-bookkeeping (lambda () )))
   "The main game loop for these types of games."
   (loop with command with args 
-	while (and (not (funcall won-gamep)) (not (funcall lost-gamep)))
+	while (funcall game-continuesp)
 	do
 	(funcall print-game-view)
        	(setf command nil)
@@ -33,7 +34,12 @@
 	      (funcall print-prompt)
 	      (setf command (find (read) *command-list* :key (lambda (c) (command-sym c))))
 	      (unless command (format t "Command not found.~%")))
-	(setf args (loop repeat (command-num-params command) collect (read)))
+	(setf args (loop repeat (command-num-params command) 
+			 collect (if (listen)
+				     (read)
+				   (progn
+				     (format t "> ")
+				     (read)))))
 	; Clears any remaining input before calling the function.
 	(when (listen) (clear-input)) 
 	(apply (command-func command) args)
@@ -52,11 +58,15 @@
   "Returns a random element from a list."
   (nth (random (length lst)) lst))
 
-(defun explode (delimiter str)
-  "Breaks up a string into a list of tokens based on the delimiter character."
-  (loop with token
-	for i = 0 then (1+ j)
-	for j = (position delimiter str :start i)
-	when (> (length (setf token (subseq str i j))) 0)
-	collect token
-	while j))
+(defun explode-seq (delimiter seq &optional remove-empty-subseqs-p)
+  "Breaks up a sequence into a list of tokens based on the delimiter character."
+  (loop for i = 0 then (1+ j)
+	for j = (position delimiter seq :start i)
+	collect (subseq seq i j) into tokens
+	while j
+	finally
+	(return 
+	 (if remove-empty-subseqs-p
+	     (remove-if (lambda (x) (zerop (length x))) tokens)
+	   tokens))))
+
