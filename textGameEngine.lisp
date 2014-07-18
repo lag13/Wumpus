@@ -7,20 +7,31 @@
 ;; We must know how many parameters a user created command/function
 ;; accepts so that the main loop can read in the appropriate number
 ;; of arguments. To prevent the user from having to manually enter 
-;; the number I created this macro which defines a function and
-;; adds it to the command list.
+;; the number I created this macro which will define a function and
+;; add it to the command list.
+
 ;; I'm not entirely sure if it is a good use of a macro. Is it a good
 ;; idea to define a function inside of a macro? Is it a good idea to
 ;; change global state inside of a macro? Does the function still get 
 ;; defined if this is called within another function?
-(defmacro add-command (command-sym command-desc command-func arg-list &body body)
+
+;; I've come to a conclusion about the two points in the above paragraph.
+;; It is fine to define a function inside of a macro. Heck, it's your
+;; abstraction you can do what you want with it! But to make it a little
+;; more obvious I've renamed the macro as "defcommand". 
+;; It is NOT a good idea to change global state inside of a macro. Any
+;; code in a macro that actually gets run should be for the purposes
+;; of helping the macro generate it's code. If you want some change in
+;; state, just make that change part of the code that the macro generates.
+(defmacro defcommand (command-sym command-desc command-func arg-list &body body)
   "Adds a command that a player could execute in a game."
-  (push (make-command :sym command-sym
-		      :func command-func
-		      :num-params (length arg-list)
-		      :description command-desc)
-	*command-list*)
-  `(defun ,command-func ,arg-list ,@body))
+  `(progn 
+    (push (make-command :sym ',command-sym
+			:func ',command-func
+			:num-params ,(length arg-list)
+			:description ,command-desc)
+	  *command-list*)
+    (defun ,command-func ,arg-list ,@body)))
 
 (defun main-game-loop (game-continuesp print-prompt print-game-view &optional (extra-bookkeeping (lambda () )))
   "The main game loop for these types of games."
