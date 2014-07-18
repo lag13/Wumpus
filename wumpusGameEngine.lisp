@@ -13,6 +13,13 @@
 ;; amount of health.
 (defstruct player location arrows health)
 
+;; All wumpus games will have this command.
+(defcommand ? "Explains the possible commands a player can execute and what they do."
+  command-help ()
+  (format t "~%POSSIBLE COMMANDS:~%")
+  (loop for c in *command-list* do 
+	(format t "~a:~5t~a~%" (command-sym c) (command-description c))))
+
 ;; All hazards will be derived from the hazard class
 ;; All wumpus's will be derived from the wumpus class
 (defstruct hazard location)
