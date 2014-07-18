@@ -18,10 +18,10 @@
 		(*cave* (mapcar #'copy-list *cave*)))
 	    (main-game-loop (lambda () (and (not (won-gamep)) (not (lost-gamep))))
 			    (lambda () (format t "SHOOT OR MOVE (S-M)? "))
-			    #'print-location-info))
-	  (if (won-gamep)
-	      (format t "~&HE HE HE THE WUMPUS'LL GET YOU NEXT TIME")
-	    (format t "~&HA HA HA YOU LOSE"))
+			    #'print-location-info)
+	    (if (won-gamep)
+		(format t "~&HE HE HE THE WUMPUS'LL GET YOU NEXT TIME")
+	      (format t "~&HA HA HA YOU LOSE")))
 	  (format t "~%~%")
 	  (if (y-or-n-p "WOULD YOU LIKE TO PLAY AGAIN?")
 	      (unless (y-or-n-p "WOULD YOU LIKE TO USE THE SAME BOARD?")
@@ -54,20 +54,18 @@
 			  (make-pit :location (nth 5 positions))))))
 
 ;; Adds a shooting command
-(add-command
- s
- "Shoots an arrow."
- player-shoot ()
- (let ((shoot-loc nil)
-       (adj-tunnels (adjacent-tunnels (player-location *player*))))
-   (loop until (and (integerp shoot-loc) (member shoot-loc adj-tunnels))
-	 do
-	 (format t "~&SHOOT WHERE? ")
-	 (setf shoot-loc (read)))
-   (unless (find shoot-loc *hazards* :key (lambda (h) (hazard-location h)))
-     (princ "MISSED"))
-   (hazards-react #'hazard-shoot-reaction shoot-loc))
- (decf (player-arrows *player*)))
+(defcommand s "Shoots an arrow."
+  player-shoot ()
+  (let ((shoot-loc nil)
+	(adj-tunnels (adjacent-tunnels (player-location *player*))))
+    (loop until (and (integerp shoot-loc) (member shoot-loc adj-tunnels))
+	  do
+	  (format t "~&SHOOT WHERE? ")
+	  (setf shoot-loc (read)))
+    (unless (find shoot-loc *hazards* :key (lambda (h) (hazard-location h)))
+      (princ "MISSED"))
+    (hazards-react #'hazard-shoot-reaction shoot-loc))
+  (decf (player-arrows *player*)))
 
 (defmethod hazard-shoot-reaction ((h wumpus) shoot-loc)
   "The action the wumpus takes when you shoot."
@@ -89,18 +87,16 @@
     (princ "YOU HEAR YOUR ARROW GO WHISTLING DOWN A HOLE")))
 
 ;; Adds a moving command.
-(add-command
- m
- "Handles player movement."
- player-move ()
- (let ((move-loc nil)
-       (adj-tunnels (adjacent-tunnels (player-location *player*))))
-   (loop until (and (integerp move-loc) (member move-loc adj-tunnels))
-	 do
-	 (format t "~&WHERE TO? ")
-	 (setf move-loc (read)))
-   (setf (player-location *player*) move-loc)
-   (hazards-react #'hazard-move-reaction)))
+(defcommand m "Handles player movement."
+  player-move ()
+  (let ((move-loc nil)
+	(adj-tunnels (adjacent-tunnels (player-location *player*))))
+    (loop until (and (integerp move-loc) (member move-loc adj-tunnels))
+	  do
+	  (format t "~&WHERE TO? ")
+	  (setf move-loc (read)))
+    (setf (player-location *player*) move-loc)
+    (hazards-react #'hazard-move-reaction)))
 
 (defmethod hazard-move-reaction ((h wumpus))
   "The action the wumpus takes when you move."
