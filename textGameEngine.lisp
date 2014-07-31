@@ -1,4 +1,30 @@
-;;; A text game engine
+;;;; A text game engine
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; How this game engine is structured ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The main two things that this text game engine does is define an
+;; environment in which the "core" of a game's code could be run and
+;; defines a way for coders to add new commands to the game. Besides
+;; that it just defines a couple of general utility functions.
+
+;; In my case, this "environment" takes the form of a plain old
+;; function which I've called "main-game-loop". This function's
+;; parameters are all parameterless functions that will be called by
+;; the game loop and are, naturally, specific to whatever game is
+;; being created. What this function essentially does is read player
+;; input, match it with a command, and execute the function associated
+;; with that command.
+
+;; A command consists of a symbol (which is what the user enters to
+;; execute the command), a function corresponding to the symbol (which
+;; ACTUALLY carries out the command), the number of parameters the
+;; function requires (so the main-game-loop can read those in), and a
+;; string describing what the command does. The only reason I have
+;; that "description" slot is because I liked the idea of being able
+;; to display to a player a list of possible commands and what they
+;; do.
 (defstruct command sym func num-params description)
 
 (defparameter *command-list* nil
@@ -9,21 +35,6 @@
 ;; arguments. To prevent the user from having to manually enter the
 ;; number I created this macro which will define a function and add it
 ;; to the command list.
-
-;; I'm not entirely sure if it is a good use of a macro. Is it a good
-;; idea to define a function inside of a macro? Is it a good idea to
-;; change global state inside of a macro? Does the function still get
-;; defined if this is called within another function?
-
-;; I've come to a conclusion about the two points in the above
-;; paragraph.  It is fine to define a function inside of a
-;; macro. Heck, it's your abstraction you can do what you want with
-;; it! But to make it a little more obvious I've renamed the macro as
-;; "defcommand".  It is NOT a good idea to change global state inside
-;; of a macro during macro expansion time. Any code in a macro that
-;; actually gets run should be for the purposes of helping the macro
-;; generate it's code. If you want some change in state, just make
-;; that change part of the code that the macro generates.
 (defmacro defcommand (command-sym command-desc command-func arg-list &body body)
   "Adds a command that a player could execute in a game."
   `(progn 
