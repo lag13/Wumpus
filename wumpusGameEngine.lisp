@@ -1,3 +1,38 @@
+;;;; A game engine for "Hunt the Wumpus" type games.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; How this game engine is structured ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; When thinking about making a wumpus game engine, this was the main
+;; thought that inspired my decisions: The basic game of hunt the
+;; wumpus is turn based. The player takes an action and then the
+;; hazards could respond depending on what action was taken.
+
+;; Right off the bat I liked the idea of all hazards being represented
+;; as objects. You could keep them in a list and if you needed them to
+;; react to a player's action then you could just loop over the list
+;; and call the appropriate "reaction" method. This would make
+;; extending hazard functionality easy because you could just create
+;; new "reaction" methods. To satisfy my OO based idea, all hazards
+;; are derived classes of a base class "hazard". Since defining
+;; "hazard reaction methods" would probably become a common occurrence
+;; I created a macro to help make it a little simpler. In addition to
+;; helping define the "reaction" methods, this macro does a couple
+;; other things which I think are quite powerful (more on that
+;; below). Since looping over the hazards would get done a lot I also
+;; abstracted that code into a function.
+
+;; To be honest, setting up this framework for how hazards work is
+;; probably the most imporant part of this file. The other things it
+;; does are rather minor but I'll list them nonetheless.
+
+;; I define a "player" class.
+;; I define a couple subroutines related to the cave (i.e. graph)
+;; that the player moves around in.
+;; I define some default predicate functions that give winning and
+;; losing conditions. 
+
 (load "textGameEngine.lisp")
 
 (defvar *player* nil
@@ -6,6 +41,9 @@
 (defvar *hazards* nil
   "A list of hazards.")
 
+(defvar *hazard-reaction-order* nil
+  "For each player action, some hazards may have a reaction. You can specify in what order the hazards will react in. That information is stored in this variable.")
+
 (defvar *cave* nil
   "The cave of tunnels.")
 
@@ -13,21 +51,112 @@
 ;; amount of health.
 (defstruct player location arrows health)
 
-;; All wumpus games will have this command.
-(defcommand ? "Explains the possible commands a player can execute and what they do."
-  command-help ()
-  (format t "~%POSSIBLE COMMANDS:~%")
-  (loop for c in *command-list* do 
-	(format t "~a:~5t~a~%" (command-sym c) (command-description c))))
-
 ;; All hazards will be derived from the hazard class
 ;; All wumpus's will be derived from the wumpus class
 (defstruct hazard location)
 (defstruct (wumpus (:include hazard)) health)
 
-;; In my setup, caves are a list of lists. The car of each
-;; inner list is the node and the cdr is the nodes adjacent
-;; to that node.
+;; One thing I noticed with these types of games, at least the way I'm
+;; choosing to implement them, is that whenever you define "hazard
+;; reaction methods" some patterns come up. ONE is that the first
+;; parameter will ALWAYS signify the type of the hazard that this
+;; method will apply to. It must be the first parameter because the
+;; "hazards-react" function expects it that way. TWO is that all the
+;; functions will have the same parameters following the first
+;; one. THREE is that all the "hazard reaction methods" have the same
+;; names. Now these three things are rather minor and aren't that hard
+;; to remember. However! This is a syntactic pattern that might be an
+;; annoyance to remember/write when you're coding.
+
+;; Just as functions can be viewed as abstractions for computation,
+;; lisp macros can be viewed as an abstraction for syntax. So I can
+;; create a macro that helps abstract away that common pattern
+;; described above. Maybe it's not strictly necessary but it might
+;; make the code clearer and easier to maintain. And I need
+;; practice. And it's just fun to do stuff like this!
+
+;; It turns out there were two more uses to writing this
+;; macro. Another challenge I was having with my setup of hazards
+;; "reacting" after you take action is that maybe, depending on the
+;; action, some hazards should react before others. So for each action
+;; that inspires a reaction there should be an order to how we loop
+;; over the hazards. Now if this macro didn't exist the coder would
+;; have separately define all the reaction methods and then have to
+;; remember to do something (like modify some global state) that would
+;; indicate the order that they WANT the hazards to react in. That
+;; seems a bit tedious. Instead, we can embded that extra step of
+;; defining an order right into the macro! In particular, the order
+;; that the hazards are listed in will be the order that they will
+;; react. That (I think) is very concise and powerful. And one more
+;; minor thing I added onto this macro is to define a method with the
+;; same signature as the others but applying to "hazard" types. This
+;; defined method does nothing. So now if the coder thinks a particular
+;; hazard shouldn't react to a given action he can just not write
+;; it. 
+;; An exmple call:
+;; (def-hazard-reactions shoot-reaction (h shoot-loc)
+;;    (pit (when (= shoot-loc (hazard-location h))
+;;           (princ "WOO")))
+;;    (bats (princ "I'm a bat") 
+;;          (princ "HERE I AM"))
+;;    (wumpus (princ "I'm a scary wumpus")
+;;       (if (= shoot-loc (hazard-location h))
+;;           (princ "NOOOOO")
+;;         (princ "FEAR ME"))))
+(defmacro def-hazard-reactions (func-name (&rest args) &body body)
+  "Defines hazard reaction methods for any and all hazards you specify.
+The first parameter will hold the \"value\" of the hazard."
+  `(progn
+     (defmethod ,func-name ((,(car args) hazard) ,@(cdr args)))
+     ,@(loop for i in body collect
+	    `(defmethod ,func-name ((,(car args) ,(car i)) ,@(cdr args)) 
+	       ,@(cdr i)))
+     (push (cons #',func-name 
+		 ',(loop for i from 0
+		      for b in body 
+		      collect (cons (car b) i)))
+		 *hazard-reaction-order*)))
+
+;; This game is turn based, you take an action and then the hazards
+;; react.  So my idea was that the hazards will all have "reaction"
+;; methods to your actions. Then, after completing your action, you
+;; could just loop over the hazards and call their reaction
+;; methods. This function does this looping. One initial challenge
+;; with this approach was dealing with the super bats which carry you
+;; to a new location. Since you are no longer in the location which
+;; prompted the looping in the first place then we shouldn't keep
+;; looping over the hazards. To get around this I let those reaction
+;; methods change the looping behavior of this function. So in the
+;; case of the bats, they could essentially tell the loop to stop. To
+;; change how the loop steps the reaction methods can return a cons
+;; pair containing the symbol CHANGE-STEP and a function representing
+;; the new step. This function will also sort the list of hazards
+;; before looping over them.
+(defun hazards-react (hazard-react-method &rest args)
+  "Loops over the list of hazards and calls their reaction methods."
+  (loop with step = #'cdr 
+     with lst = (setf *hazards* (sort *hazards*
+				      (let ((ordering (cdr (assoc hazard-react-method
+								  *hazard-reaction-order*))))
+					(lambda (x y)
+					  (let ((x (assoc (type-of x) ordering))
+						(y (assoc (type-of y) ordering)))
+					    (cond
+					      ((null x) nil)
+					      ((null y) T)
+					      (T (< (cdr x) (cdr y)))))))))
+     with h with return-val
+     while (setf h (car lst))
+     do
+       (fresh-line)
+       (setf return-val (apply hazard-react-method h args))
+       (when (and (consp return-val) 
+		  (eq (car return-val) 'change-step))
+	 (setf step (cdr return-val)))
+       (setf lst (funcall step lst))))
+
+;; In my setup, caves are a list of lists. The car of each inner list
+;; is the node and the cdr is the nodes adjacent to that node.
 (defun adjacent-tunnels (location) 
   "Returns the list of tunnels adjacent to location."
   (cdr (assoc location *cave*)))
@@ -59,73 +188,67 @@
   "Returns a regular cave."
   (let ((num-rooms (* width height)) (bottom-left-corner (- (* width height) width)))
     (flet ((adj-rooms (room) ;; Returns a list of adjacent rooms for a particular room
-		      (let ((result nil))
-			(cond
-			 ((zerop room)  ;; Top left corner
-			  (push 1 result)
-			  (push (+ room width) result)
-			  (when toroidal
-			    (push (1- width) result)
-			    (push bottom-left-corner result)))
-			 ((= room (1- width)) ;; Top right corner
-			  (push (+ room width) result)
-			  (push (1- room) result)
-			  (when toroidal
-			    (push 0 result)
-			    (push (1- num-rooms) result)))
-			 ((= room bottom-left-corner) ;; Bottom left corner
-			  (push (1+ room) result)
-			  (push (- room width) result)
-			  (when toroidal
-			    (push 0 result)
-			    (push (1- num-rooms) result)))
-			 ((= room (1- num-rooms)) ;; Bottom right corner
-			  (push (1- room) result)
-			  (push (- room width) result)
-			  (when toroidal
-			    (push (1- width) result)
-			    (push bottom-left-corner result)))
-			 ((< room width) ;; Top edge
-			  (push (1+ room) result)
-			  (push (+ room width) result)
-			  (push (1- room) result)
-			  (when toroidal
-			    (push (+ bottom-left-corner room) result)))
-			 ((zerop (mod room width)) ;; Left edge
-			  (push (1+ room) result)
-			  (push (+ room width) result)
-			  (push (- room width) result)
-			  (when toroidal
-			    (push (1- (+ room width)) result)))
-			 ((zerop (mod (1+ room) width)) ;; Right edge
-			  (push (+ room width) result)
-			  (push (1- room) result)
-			  (push (- room width) result)
-			  (when toroidal
-			    (push (1+ (- room width)) result)))
-			 ((>= room bottom-left-corner) ;; Bottome edge
-			  (push (1+ room) result)
-			  (push (1- room) result)
-			  (push (- room width) result)
-			  (when toroidal
-			    (push (- room bottom-left-corner) result)))
-			 (T ;; Everything else
-			  (push (1+ room) result)
-			  (push (+ room width) result)
-			  (push (1- room) result)
-			  (push (- room width) result)))
-			result)))
-	  (loop for room from 0 below num-rooms
-		collect (cons room (adj-rooms room))))))
+	     (let ((result nil))
+	       (cond
+		 ((zerop room)  ;; Top left corner
+		  (push 1 result)
+		  (push (+ room width) result)
+		  (when toroidal
+		    (push (1- width) result)
+		    (push bottom-left-corner result)))
+		 ((= room (1- width)) ;; Top right corner
+		  (push (+ room width) result)
+		  (push (1- room) result)
+		  (when toroidal
+		    (push 0 result)
+		    (push (1- num-rooms) result)))
+		 ((= room bottom-left-corner) ;; Bottom left corner
+		  (push (1+ room) result)
+		  (push (- room width) result)
+		  (when toroidal
+		    (push 0 result)
+		    (push (1- num-rooms) result)))
+		 ((= room (1- num-rooms)) ;; Bottom right corner
+		  (push (1- room) result)
+		  (push (- room width) result)
+		  (when toroidal
+		    (push (1- width) result)
+		    (push bottom-left-corner result)))
+		 ((< room width) ;; Top edge
+		  (push (1+ room) result)
+		  (push (+ room width) result)
+		  (push (1- room) result)
+		  (when toroidal
+		    (push (+ bottom-left-corner room) result)))
+		 ((zerop (mod room width)) ;; Left edge
+		  (push (1+ room) result)
+		  (push (+ room width) result)
+		  (push (- room width) result)
+		  (when toroidal
+		    (push (1- (+ room width)) result)))
+		 ((zerop (mod (1+ room) width)) ;; Right edge
+		  (push (+ room width) result)
+		  (push (1- room) result)
+		  (push (- room width) result)
+		  (when toroidal
+		    (push (1+ (- room width)) result)))
+		 ((>= room bottom-left-corner) ;; Bottome edge
+		  (push (1+ room) result)
+		  (push (1- room) result)
+		  (push (- room width) result)
+		  (when toroidal
+		    (push (- room bottom-left-corner) result)))
+		 (T ;; Everything else
+		  (push (1+ room) result)
+		  (push (+ room width) result)
+		  (push (1- room) result)
+		  (push (- room width) result)))
+	       result)))
+      (loop for room from 0 below num-rooms
+	 collect (cons room (adj-rooms room))))))
 
-;; If the user wants different winning or losing conditions 
-;; they could make such functions themselves. However, if they
-;; want to make a new losing condition it MUST have the same name
-;; as this one. The only reason is that the "hazards-react" function
-;; below calls this function and I don't feel like passing it in
-;; as a parameter.
-;; I don't know if that's the best way to go about doing things
-;; (probably not) but I think it works.
+;; If the user wants different winning or losing conditions they could
+;; make such functions and use those instead.
 (defun lost-gamep ()
   "Default way to lose a game."
   (or 
@@ -135,29 +258,6 @@
 (defun won-gamep ()
   "Default way to win a game is to kill all wumpus's."
   (loop for h in *hazards* 
-	always (if (eq 'wumpus (type-of h)) (<= (wumpus-health h) 0) T)))
-
-;; This game is turn based, you take an action and then the hazards react.
-;; So my idea was that the hazards will all have "reaction" methods to your 
-;; actions. Then, after completing your action, you could just loop over 
-;; the hazards and call their reaction methods. This function does this 
-;; looping. One initial challenge with this approach was dealing with
-;; the super bats which carry you to a new location. Since you are no longer
-;; in the location which prompted the looping in the first place then we
-;; shouldn't keep looping over the hazards. To get around this I let those 
-;; reaction methods change the looping behavior of this function. So in the 
-;; case of the bats, they could essentially tell the loop to stop. To change 
-;; how the loop steps the reaction methods can return a cons pair containing 
-;; the symbol CHANGE-STEP and a function representing the new step.
-(defun hazards-react (hazard-react-method &rest args)
-  "Loops over the list of hazards and calls their reaction methods."
-  (loop with step = #'cdr with lst = *hazards* with h with return-val
-	while (and (setf h (car lst))
-		   (not (lost-gamep)))
-	do
-	(fresh-line)
-	(setf return-val (apply hazard-react-method h args))
-	(when (and (consp return-val) 
-		   (eq (car return-val) 'change-step))
-	  (setf step (cdr return-val)))
-	(setf lst (funcall step lst))))
+     always (if (subtypep (type-of h) 'wumpus)
+		(<= (wumpus-health h) 0)
+		T)))
