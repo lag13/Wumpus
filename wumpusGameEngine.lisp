@@ -161,6 +161,40 @@ The first parameter will hold the \"value\" of the hazard."
   "Returns the list of tunnels adjacent to location."
   (cdr (assoc location *cave*)))
 
+(defun within-one (loc1 loc2)
+  "Returns true if loc2 is within one move away from loc1."
+  (member loc2 (adjacent-tunnels loc1)))
+
+(defun within-two (loc1 loc2)
+  "Returns true if loc2 is within two moves away from loc1."
+  (or (within-one loc1 loc2)
+      (some (lambda (u)
+	      (within-one u loc2))
+	    (adjacent-tunnels loc1))))
+
+(defun shortest-path (source dest)
+  "Returns a list which is the shortest path from source to dest. The weight of each edge is just 1."
+  (do* ((min-queue (let ((inf (length *cave*)))
+		     (mapcar (lambda (x)
+			       (list :vert x :pred nil :shortest-est inf))
+			     (remove source (mapcar #'car *cave*))))
+		   (sort min-queue #'< :key (lambda (x) (getf x :shortest-est))))
+	(verts (list (list :vert source :pred nil :shortest-est 0))
+	       (cons (pop min-queue) verts)))
+       ((null min-queue) (do ((u (find dest verts :key (lambda (x) (getf x :vert)))
+				 (find (getf u :pred) verts :key (lambda (x) (getf x :vert))))
+			      (path nil (cons (getf u :vert) path)))
+			     ((null u) path)))
+    (let* ((u (car verts))
+	   (new-dist (1+ (getf u :shortest-est))))
+      (mapc (lambda (v)
+	      (let ((v (find v min-queue :key (lambda (x) (getf x :vert)))))
+		(when (< new-dist (getf v :shortest-est))
+		  (setf (getf v :shortest-est) new-dist)
+		  (setf (getf v :pred) (getf u :vert)))))
+	    (set-difference (adjacent-tunnels (getf u :vert)) 
+			    (mapcar (lambda (x) (getf x :vert)) verts))))))
+
 (defun dodec-cave ()
   "Returns a dodecahedron cave like in the original game of hunt the wumpus"
   '((0 1 4 7)	
