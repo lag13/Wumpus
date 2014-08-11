@@ -30,6 +30,9 @@
 (defparameter *command-list* nil
   "List of possible commands that the player can execute.")
 
+(defvar *skip-bookkeepingp* nil
+  "A boolean variable that allows the coder to prevent the 'bookkeeping' function in the main-game-loop from being called")
+
 ;; We must know how many parameters a user created command/function
 ;; accepts so that the main loop can read in the appropriate number of
 ;; arguments. To prevent the user from having to manually enter the
@@ -67,7 +70,9 @@
 					; Clears any remaining input before calling the function.
        (when (listen) (clear-input)) 
        (apply (command-func command) args)
-       (funcall extra-bookkeeping)))
+       (if *skip-bookkeepingp*
+	   (setf *skip-bookkeepingp* nil)
+	   (funcall extra-bookkeeping))))
 
 (defun n-rand-unique (n max) 
   "Returns a list of n random unique numbers in the range [0, max)."
