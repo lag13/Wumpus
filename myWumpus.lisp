@@ -18,9 +18,10 @@
 	 (let ((*player* (copy-structure *player*))
 	       (*hazards* (mapcar #'copy-structure *hazards*))
 	       (*cave* (mapcar #'copy-list *cave*)))
-	   (main-game-loop (lambda () (and (not (won-gamep)) (not (lost-gamep))))
-			   (lambda () (format t "SHOOT OR MOVE (S-M)? "))
-			   #'print-location-info)
+	   (main-game-loop :continue-game-p (and (not (won-gamep)) (not (lost-gamep)))
+			   :pre-comp ((print-location-info))
+			   :handle-input ((handle-input 
+					   (lambda () (format t "SHOOT OR MOVE (S-M)? ")))))
 	   (if (won-gamep)
 	       (format t "~&HE HE HE THE WUMPUS'LL GET YOU NEXT TIME")
 	       (format t "~&HA HA HA YOU LOSE")))
