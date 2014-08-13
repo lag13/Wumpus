@@ -43,19 +43,20 @@
 
 (defun main-game ()
   (setf *alien-time-travelingp* nil)
-  (main-game-loop (lambda () (and (not *quit-gamep*) (not *alien-time-travelingp*) 
-				  (not (winp)) (not (losep))))
-		  (lambda () (format t "ENTER A COMMAND: "))
-		  #'print-location-info
-		  (lambda ()
-		    (when (plusp (tomc-charge-limit *player*))
-		      (decf (tomc-charge-limit *player*)))
-		    (when (and *time-travelp* 
-			       (= (tomc-health *player*) 1)
-			       (= (incf (tomc-low-blood-count *player*))
-				  *low-blood-limit*))
-		      (format t "YOU HAVE LOST TOO MUCH BLOOD AND LOST THE ABILITY TO TIME TRAVEL...~%")
-		      (setf *time-travelp* nil))))
+  (main-game-loop  :continue-game-p (and (not *quit-gamep*) (not *alien-time-travelingp*) 
+				  (not (winp)) (not (losep)))
+		   :pre-comp ((print-location-info))
+		   :handle-input ((handle-input (lambda ()
+						  (format t "ENTER A COMMAND: "))))
+		   :check-after T
+		   :post-comp ((when (plusp (tomc-charge-limit *player*))
+				 (decf (tomc-charge-limit *player*)))
+			       (when (and *time-travelp* 
+					  (= (tomc-health *player*) 1)
+					  (= (incf (tomc-low-blood-count *player*))
+					     *low-blood-limit*))
+				 (format t "YOU HAVE LOST TOO MUCH BLOOD AND LOST THE ABILITY TO TIME TRAVEL...~%")
+				 (setf *time-travelp* nil))))
   (cond 
     ((winp) (format t "~&CONGRATULATIONS. YOU'VE HELD OFF THE INVASION, FOR NOW..."))
     ((and (<= (tomc-health *player*) 0) *time-travelp*)
@@ -140,7 +141,7 @@
   (format t "~%POSSIBLE COMMANDS:~%")
   (loop for c in *command-list* do 
        (format t "~a:~5t~a~%" (command-sym c) (command-description c)))
-  (setf *skip-bookkeepingp* T))
+  (skip-post-comp))
 
 ;; Adds a moving command.
 (defcommand m "Moves you to an adjacent spot. Use ex: m 12"
@@ -160,7 +161,7 @@
 	(hazards-react #'hazard-ai))
       (progn 
 	(format t "~%INVALID LOCATION: ~a" move-loc)
-	(setf *skip-bookkeepingp* T))))
+	(skip-post-comp))))
 
 ;; Three of the commands that handle different kinds of player attacks
 ;; are VERY similar. So I decided to make this macro to abstract away
@@ -184,7 +185,7 @@
 	     (if ,a-cond
 		 (format t "~%INVALID LOCATION: ~a" ,a-loc)
 		 (format t "~%~a" ,error-str))
-	     (setf *skip-bookkeepingp* T))))))
+	     (skip-post-comp))))))
 
 ;; Adds a shooting command
 (defcommand s "Shoots an arrow into an adjacent spot. Use ex: s 10"
@@ -238,7 +239,7 @@
 	(hazards-react #'hazard-ai))
       (progn
 	(format t "~%NOTHING TO STAB")
-	(setf *skip-bookkeepingp* T))))
+	(skip-post-comp))))
 
 (defmacro setf1-non-nil (form value)
   "Sets one form to a value if the value is true."
