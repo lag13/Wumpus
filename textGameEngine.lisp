@@ -48,6 +48,27 @@
 	   *command-list*)
      (defun ,command-func ,arg-list ,@body)))
 
+(defmacro mgl (&key (continue-game-p T) check-before check-after 
+			    pre-comp handle-input post-comp)
+  `(tagbody
+      (defun skip-pre-comp () (go skip-pre-comp))
+      (defun skip-post-comp () (go start))
+      (defun skip-pre-post-comp () (go before-handle-input))
+      (defun end-loop () (go end))
+    start
+      (unless ,continue-game-p (go end))
+      ,@pre-comp
+    before-handle-input
+      ,@(when check-before `((unless ,countinue-game-p (go end))))
+      ,@handle-input
+      ,@(when check-after `((unless ,continue-game-p (go end))))
+      ,@post-comp
+      (go start)
+    skip-pre-comp
+      ,@post-comp
+      (go before-handle-input)
+    end))
+
 (defun main-game-loop (game-continuesp print-prompt 
 		       print-game-view &optional (extra-bookkeeping (lambda ())))
   "The main game loop for these types of games."
