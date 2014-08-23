@@ -3,6 +3,13 @@
 ;; Loads the wumpus game engine (which also loads the text game engine).
 (load "wumpusGameEngine.lisp")
 
+(defvar *player* nil
+  "The player character.")
+
+;; The player is defined by location, number of arrows, and 
+;; amount of health.
+(defstruct player location arrows health)
+
 ;; The classic two hazards in hunt the wumpus.
 (defstruct (bats (:include hazard)))
 (defstruct (pit (:include hazard)))
@@ -30,6 +37,21 @@
 	     (unless (y-or-n-p "WOULD YOU LIKE TO USE THE SAME BOARD?")
 	       (init-game))
 	     (setf continue-gamep nil)))))
+
+;; If the user wants different winning or losing conditions they could
+;; make such functions and use those instead.
+(defun lost-gamep ()
+  "Default way to lose a game."
+  (or 
+   (<= (player-health *player*) 0) 
+   (<= (player-arrows *player*) 0)))
+
+(defun won-gamep ()
+  "Default way to win a game is to kill all wumpus's."
+  (loop for h in *hazards* 
+     always (if (subtypep (type-of h) 'wumpus)
+		(<= (wumpus-health h) 0)
+		T)))
 
 (defun print-location-info () 
   "Prints information about your current status in the game."
