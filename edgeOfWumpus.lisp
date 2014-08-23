@@ -4,6 +4,7 @@
 ;; Loads the wumpus game engine (which also loads the text game engine).
 (load "wumpusGameEngine.lisp")
 
+(defvar *player* nil)
 (defparameter *quit-gamep* nil
   "Helps allow the player to quit the game.")
 (defparameter *time-travelp* nil
