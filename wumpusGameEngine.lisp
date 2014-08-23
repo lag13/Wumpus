@@ -1,32 +1,5 @@
 ;;;; A game engine for "Hunt the Wumpus" type games.
 
-;; The main two things that this text game engine does is define an
-;; environment in which the "core" of a game's code could be run and
-;; defines a way for coders to add new commands to the game. Besides
-;; that it just defines a couple of general utility functions.
-
-;; In my case, this "environment" takes the form of a plain old
-;; function which I've called "main-game-loop". This function's
-;; parameters are all parameterless functions that will be called by
-;; the game loop and are, naturally, specific to whatever game is
-;; being created. What this function essentially does is read player
-;; input, match it with a command, and execute the function associated
-;; with that command.
-
-;; A command consists of a symbol (which is what the user enters to
-;; execute the command), a function corresponding to the symbol (which
-;; ACTUALLY carries out the command), the number of parameters the
-;; function requires (so the main-game-loop can read those in), and a
-;; string describing what the command does. The only reason I have
-;; that "description" slot is because I liked the idea of being able
-;; to display to a player a list of possible commands and what they
-;; do.
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; How this game engine is structured ;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ;; When thinking about making a wumpus game engine, this was the main
 ;; thought that inspired my decisions: The basic game of hunt the
 ;; wumpus is turn based. The player takes an action and then the
@@ -37,7 +10,7 @@
 ;; react to a player's action then you could just loop over the list
 ;; and call the appropriate "reaction" method. This would make
 ;; extending hazard functionality easy because you could just create
-;; new "reaction" methods. To satisfy my OO based idea, all hazards
+;; new "reaction" methods. To satisfy this OO based idea, all hazards
 ;; are derived classes of a base class "hazard". Since defining
 ;; "hazard reaction methods" would probably become a common occurrence
 ;; I created a macro to help make it a little simpler. In addition to
@@ -46,15 +19,24 @@
 ;; below). Since looping over the hazards would get done a lot I also
 ;; abstracted that code into a function.
 
-;; To be honest, setting up this framework for how hazards work is
-;; probably the most imporant part of this file. The other things it
-;; does are rather minor but I'll list them nonetheless.
+;; The other important thing this engine does is provide a way for
+;; programmers to define new commands that the player can execute. A
+;; command consists of a symbol (which is what the user enters to
+;; execute the command), a function corresponding to the symbol (which
+;; ACTUALLY carries out the command), the number of parameters the
+;; function requires (so those parameters can be read in), and a
+;; string describing what the command does. The only reason I have
+;; this string is because I liked the idea of being able to display to
+;; the player a list of possible commands and what they do. Tied in
+;; with this feature of defining commands is a function called
+;; "handle-input" which will read in user input and call the function
+;; associated with what they've entered. This makes defining new
+;; player functionality simple because all you have to do is define
+;; new commands and they will be automatically incorporated into the
+;; game.
 
-;; I define a "player" class.
-;; I define a couple subroutines related to the cave (i.e. graph)
-;; that the player moves around in.
-;; I define some default predicate functions that give winning and
-;; losing conditions. 
+;; Some of the other things this file defines are rather minor and I'm
+;; considering removing/changing some of them.
 
 (load "textGameEngine.lisp")
 
@@ -96,9 +78,6 @@
 	     (apply (command-func command) args))
 	   (format t "COMMAND NOT FOUND~%"))))
 
-(defvar *player* nil
-  "The player character.")
-
 (defvar *hazards* nil
   "A list of hazards.")
 
@@ -108,9 +87,18 @@
 (defvar *cave* nil
   "The cave of tunnels.")
 
-;; The player is defined by location, number of arrows, and 
-;; amount of health.
-(defstruct player location arrows health)
+(defun n-rand-unique (n max) 
+  "Returns a list of n random unique numbers in the range [0, max)."
+  (loop with arr = (make-array max 
+			       :initial-contents (loop for i from 0 below max collect i))
+     with lowerBound = (- max n)
+     for i from (1- max) downto lowerBound
+     do (rotatef (aref arr i) (aref arr (random (1+ i))))
+     collect (aref arr i)))
+
+(defun random-list-elem (lst)
+  "Returns a random element from a list."
+  (nth (random (length lst)) lst))
 
 ;; All hazards will be derived from the hazard class
 ;; All wumpus's will be derived from the wumpus class
@@ -142,7 +130,7 @@
 ;; action, some hazards should react before others. So for each action
 ;; that inspires a reaction there should be an order to how we loop
 ;; over the hazards. Now if this macro didn't exist the coder would
-;; have separately define all the reaction methods and then have to
+;; have to separately define all the reaction methods and then
 ;; remember to do something (like modify some global state) that would
 ;; indicate the order that they WANT the hazards to react in. That
 ;; seems a bit tedious. Instead, we can embded that extra step of
@@ -151,10 +139,10 @@
 ;; react. That (I think) is very concise and powerful. And one more
 ;; minor thing I added onto this macro is to define a method with the
 ;; same signature as the others but applying to "hazard" types. This
-;; defined method does nothing. So now if the coder thinks a particular
-;; hazard shouldn't react to a given action he can just not write
-;; it. 
-;; An exmple call:
+;; defined method does nothing. So now if the coder thinks a
+;; particular hazard shouldn't react to a given action he can just not
+;; write it. An exmple call:
+
 ;; (def-hazard-reactions shoot-reaction (h shoot-loc)
 ;;    (pit (when (= shoot-loc (hazard-location h))
 ;;           (princ "WOO")))
@@ -342,17 +330,3 @@ The first parameter will hold the \"value\" of the hazard."
       (loop for room from 0 below num-rooms
 	 collect (cons room (adj-rooms room))))))
 
-;; If the user wants different winning or losing conditions they could
-;; make such functions and use those instead.
-(defun lost-gamep ()
-  "Default way to lose a game."
-  (or 
-   (<= (player-health *player*) 0) 
-   (<= (player-arrows *player*) 0)))
-
-(defun won-gamep ()
-  "Default way to win a game is to kill all wumpus's."
-  (loop for h in *hazards* 
-     always (if (subtypep (type-of h) 'wumpus)
-		(<= (wumpus-health h) 0)
-		T)))
